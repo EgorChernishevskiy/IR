@@ -39,7 +39,6 @@ public class RussianSpellChecker {
         }
     }
 
-    // Метод для загрузки дополнительных слов
     private List<String> loadAdditionalWords(String filePath) {
         List<String> words = new ArrayList<>();
         try (InputStream inputStream = getClass().getClassLoader().getResourceAsStream(filePath);
@@ -77,10 +76,8 @@ public class RussianSpellChecker {
     }
 
     private void addTerms(List<String> terms, String baseTerm, JsonNode synonymsNode) {
-        // Добавляем основной термин (заменяем точки на пробелы)
         terms.add(baseTerm.replace(".", " "));
 
-        // Добавляем синонимы
         for (JsonNode synonymNode : synonymsNode) {
             String synonym = synonymNode.asText();
             terms.add(synonym);
