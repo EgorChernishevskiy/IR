@@ -1,6 +1,7 @@
 import org.apache.commons.text.similarity.FuzzyScore;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.apache.commons.text.similarity.LevenshteinDistance;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -9,11 +10,15 @@ import java.util.*;
 public class RussianSpellChecker {
 
     private final List<String> dictionary;
-    private final FuzzyScore fuzzyScore;
 
     public RussianSpellChecker() {
-        this.dictionary = loadDictionaryFromSynonyms("synonyms.json");
-        this.fuzzyScore = new FuzzyScore(new Locale("ru"));
+        List<String> synonymWords = loadDictionaryFromSynonyms("synonyms.json");
+        List<String> additionalWords = loadAdditionalWords("unique_words.txt");
+
+        Set<String> combinedSet = new HashSet<>();
+        combinedSet.addAll(synonymWords);
+        combinedSet.addAll(additionalWords);
+        this.dictionary = new ArrayList<>(combinedSet);
     }
 
     private List<String> loadDictionaryFromSynonyms(String filePath) {
@@ -27,11 +32,29 @@ public class RussianSpellChecker {
             processJsonNode(rootNode, terms, "");
 
             // Дедупликация терминов
-            return new ArrayList<>(terms.stream().distinct().toList());
+            return new ArrayList<>(new HashSet<>(terms));
 
         } catch (IOException e) {
             throw new RuntimeException("Ошибка загрузки словаря", e);
         }
+    }
+
+    // Метод для загрузки дополнительных слов
+    private List<String> loadAdditionalWords(String filePath) {
+        List<String> words = new ArrayList<>();
+        try (InputStream inputStream = getClass().getClassLoader().getResourceAsStream(filePath);
+             Scanner scanner = new Scanner(inputStream, "UTF-8")) {
+            if (inputStream == null) throw new RuntimeException("Файл не найден: " + filePath);
+            while (scanner.hasNextLine()) {
+                String line = scanner.nextLine().trim();
+                if (!line.isEmpty()) {
+                    words.add(line);
+                }
+            }
+        } catch (IOException e) {
+            throw new RuntimeException("Ошибка загрузки дополнительных слов", e);
+        }
+        return words;
     }
 
     private void processJsonNode(JsonNode node, List<String> terms, String parentKey) {
@@ -54,8 +77,8 @@ public class RussianSpellChecker {
     }
 
     private void addTerms(List<String> terms, String baseTerm, JsonNode synonymsNode) {
-        // Добавляем основной термин
-        terms.add(baseTerm.replace(".", " ")); // Заменяем точки на пробелы
+        // Добавляем основной термин (заменяем точки на пробелы)
+        terms.add(baseTerm.replace(".", " "));
 
         // Добавляем синонимы
         for (JsonNode synonymNode : synonymsNode) {
@@ -66,33 +89,18 @@ public class RussianSpellChecker {
 
     public String suggest(String word) {
         String lowerWord = word.toLowerCase();
-        List<ScoredWord> candidates = new ArrayList<>();
+        LevenshteinDistance ld = new LevenshteinDistance();
+        String bestCandidate = word;
+        int bestDistance = Integer.MAX_VALUE;
 
         for (String dictWord : dictionary) {
-            int score = fuzzyScore.fuzzyScore(lowerWord, dictWord.toLowerCase());
-            if (score > 0) {
-                candidates.add(new ScoredWord(dictWord, score));
+            int distance = ld.apply(lowerWord, dictWord.toLowerCase());
+            if (distance < bestDistance) {
+                bestDistance = distance;
+                bestCandidate = dictWord;
             }
         }
-
-        // Сортируем по убыванию score и выбираем лучший
-        Collections.sort(candidates);
-        return candidates.isEmpty() ? word : candidates.get(0).word;
+        return bestCandidate;
     }
 
-    // Вспомогательный класс для хранения результатов
-    private static class ScoredWord implements Comparable<ScoredWord> {
-        String word;
-        int score;
-
-        ScoredWord(String word, int score) {
-            this.word = word;
-            this.score = score;
-        }
-
-        @Override
-        public int compareTo(ScoredWord other) {
-            return Integer.compare(other.score, this.score);
-        }
-    }
 }

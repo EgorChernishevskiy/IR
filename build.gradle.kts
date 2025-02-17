@@ -1,5 +1,6 @@
 plugins {
     id("java")
+    id("application")
 }
 
 group = "org.example"
@@ -8,7 +9,9 @@ version = "1.0-SNAPSHOT"
 repositories {
     mavenCentral()
 }
-
+application {
+    mainClass.set("SearchApp")
+}
 java {
     toolchain {
         languageVersion.set(JavaLanguageVersion.of(21))

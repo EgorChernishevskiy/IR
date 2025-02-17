@@ -71,8 +71,13 @@ public class SynonymAnalyzer extends Analyzer {
     private void addSynonyms(SynonymMap.Builder builder, String baseTerm, JsonNode synonymsNode) {
         CharsRef base = new CharsRef(baseTerm);
         for (JsonNode synonymNode : synonymsNode) {
-            String synonym = synonymNode.asText();
-            builder.add(base, new CharsRef(synonym), true);
+            String synonym = synonymNode.asText().trim();
+            if (!synonym.isEmpty()) {
+                // mapping от базового термина к синониму
+                builder.add(base, new CharsRef(synonym), true);
+                // обратное сопоставление
+                builder.add(new CharsRef(synonym), new CharsRef(baseTerm), true);
+            }
         }
     }
 
@@ -88,6 +93,23 @@ public class SynonymAnalyzer extends Analyzer {
         return new TokenStreamComponents(source, filter);
     }
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 //@Override
 //protected Analyzer.TokenStreamComponents createComponents(String fieldName) {
 //    Tokenizer source = new StandardTokenizer();

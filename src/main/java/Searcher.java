@@ -1,7 +1,7 @@
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.index.DirectoryReader;
-import org.apache.lucene.queryparser.classic.QueryParser;
+import org.apache.lucene.queryparser.classic.MultiFieldQueryParser;
 import org.apache.lucene.search.TopDocs;
 import org.apache.lucene.search.ScoreDoc;
 import org.apache.lucene.search.IndexSearcher;
@@ -21,38 +21,43 @@ public class Searcher {
         this.analyzer = new SynonymAnalyzer();
     }
 
-    /**
-     * Выполняет поиск по переданному запросу и выводит результаты.
-     *
-     * @param queryString поисковый запрос
-     * @param numResults  число возвращаемых результатов (например, 10)
-     */
     public void search(String queryString, int numResults) {
         try {
             FSDirectory dir = FSDirectory.open(Paths.get(INDEX_DIR));
-            // Используем DirectoryReader, чтобы иметь доступ к методу document(...)
             DirectoryReader reader = DirectoryReader.open(dir);
             IndexSearcher searcher = new IndexSearcher(reader);
-            // Поиск по полю "description" – при необходимости можно изменить на другое поле.
-            QueryParser parser = new QueryParser("description", analyzer);
+
+            // Поиск по полям
+            String[] fields = {"name", "description", "features"};
+            MultiFieldQueryParser parser = new MultiFieldQueryParser(fields, analyzer);
             Query query = parser.parse(queryString);
 
             TopDocs results = searcher.search(query, numResults);
-            if (results.totalHits.value == 0) {  // метод value() возвращает число найденных документов
-                System.out.println("Ничего не найдено по запросу: " + queryString);
-                // Если ничего не найдено, предлагаем варианты исправления опечаток
-                offerSpellCheck(queryString);
-            } else {
+            // Если результатов нет
+            if (results.totalHits.value == 0) {
+                String correctedQuery = getCorrectedQuery(queryString);
+                if (!correctedQuery.equalsIgnoreCase(queryString)) {
+                    System.out.println("По запросу \"" + queryString + "\" ничего не найдено.");
+                    System.out.println("Возможно, вы имели в виду: \"" + correctedQuery + "\". Выполняем поиск по исправленному запросу...");
+                    Query correctedParsedQuery = parser.parse(correctedQuery);
+                    results = searcher.search(correctedParsedQuery, numResults);
+                }
+            }
+
+            // Вывод результатов, если есть
+            if (results.totalHits.value > 0) {
                 System.out.println("Найдено " + results.totalHits.value + " результатов:");
                 for (ScoreDoc scoreDoc : results.scoreDocs) {
-                    // Получаем документ через DirectoryReader.document(...)
                     Document doc = reader.document(scoreDoc.doc);
                     System.out.println("ID: " + doc.get("id"));
                     System.out.println("Название: " + doc.get("name"));
                     System.out.println("Цена: " + doc.get("price"));
                     System.out.println("Описание: " + doc.get("description"));
+                    System.out.println("Характеристики: " + doc.get("features"));
                     System.out.println("--------------------------------------------------");
                 }
+            } else {
+                System.out.println("Ничего не найдено даже по исправленному запросу.");
             }
             reader.close();
         } catch (Exception e) {
@@ -60,28 +65,16 @@ public class Searcher {
         }
     }
 
-    /**
-     * Если результатов не найдено, пытаемся предложить исправленный запрос с использованием RussianSpellChecker.
-     *
-     * @param queryString исходный поисковый запрос
-     */
-    private void offerSpellCheck(String queryString) {
+    private String getCorrectedQuery(String queryString) {
         RussianSpellChecker spellChecker = new RussianSpellChecker();
         String[] words = queryString.split("\\s+");
-        StringBuilder suggestionBuilder = new StringBuilder();
+        StringBuilder correctedBuilder = new StringBuilder();
         for (String word : words) {
-            String suggestion = spellChecker.suggest(word);
-            suggestionBuilder.append(suggestion).append(" ");
+            correctedBuilder.append(spellChecker.suggest(word)).append(" ");
         }
-        String suggestedQuery = suggestionBuilder.toString().trim();
-        if (!suggestedQuery.equalsIgnoreCase(queryString)) {
-            System.out.println("Возможно, вы имели в виду: " + suggestedQuery + " ?");
-        }
+        return correctedBuilder.toString().trim();
     }
 
-    /**
-     * Интерактивный режим поиска через консоль.
-     */
     public void interactiveSearch() {
         Scanner scanner = new Scanner(System.in);
         while (true) {
