@@ -1,11 +1,7 @@
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.lucene.analysis.Analyzer;
-import org.apache.lucene.document.Document;
-import org.apache.lucene.document.StoredField;
-import org.apache.lucene.document.TextField;
-import org.apache.lucene.document.StringField;
-import org.apache.lucene.document.Field;
+import org.apache.lucene.document.*;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.IndexWriterConfig;
 import org.apache.lucene.store.FSDirectory;
@@ -13,8 +9,7 @@ import org.apache.lucene.store.FSDirectory;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Paths;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 public class Indexer {
 
@@ -30,24 +25,36 @@ public class Indexer {
             ObjectMapper mapper = new ObjectMapper();
             List<Guitar> guitars = mapper.readValue(new File(jsonFilePath), new TypeReference<List<Guitar>>() {});
 
+            Set<Integer> seenIds = new HashSet<>();
+            boolean electricMode = true; // Сначала считаем, что все гитары электрические
+
             for (Guitar guitar : guitars) {
                 Document doc = new Document();
                 doc.add(new StringField("id", String.valueOf(guitar.getId()), Field.Store.YES));
                 doc.add(new TextField("name", guitar.getName(), Field.Store.YES));
                 doc.add(new TextField("description", guitar.getDescription(), Field.Store.YES));
 
-                // все характеристики в одно поле
                 StringBuilder featuresText = new StringBuilder();
                 Map<String, String> features = guitar.getFeatures();
                 if (features != null) {
                     for (Map.Entry<String, String> entry : features.entrySet()) {
-                        featuresText.append(entry.getKey()).append(" ")
-                                .append(entry.getValue()).append(" ");
+                        featuresText.append(entry.getKey())
+                                .append(" ")
+                                .append(entry.getValue())
+                                .append(" ");
                     }
                 }
                 doc.add(new TextField("features", featuresText.toString(), Field.Store.YES));
-
                 doc.add(new StoredField("price", guitar.getPrice()));
+
+                // Если id уже встречался, значит, начались акустические гитары
+                if (seenIds.contains(guitar.getId())) {
+                    electricMode = false;
+                }
+                seenIds.add(guitar.getId());
+
+                String type = electricMode ? "electric" : "acoustic";
+                doc.add(new StringField("type", type, Field.Store.YES));
 
                 writer.addDocument(doc);
             }
